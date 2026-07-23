@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#101820">
-  <title>Активний сканер інвентаризації</title>
+  <title>Активний сканер інвентаризації v4.1 FAST</title>
   <script src="https://unpkg.com/@zxing/browser@0.1.5/umd/index.min.js"></script>
   <style>
     :root {
@@ -348,6 +348,7 @@
     let stream = null;
     let detector = null;
     let detectorTimer = null;
+    let detectorRunning = false;
     let zxingReader = null;
     let zxingControls = null;
     let paused = false;
@@ -356,6 +357,16 @@
     let lastCodeSeenAt = 0;
     let torchOn = false;
     let audioContext = null;
+
+    // Швидкий режим: розпізнаємо лише центральну область, а серверні записи
+    // відправляємо у фоновій черзі, не заморожуючи камеру.
+    const scanCanvas = document.createElement('canvas');
+    scanCanvas.width = 720;
+    scanCanvas.height = 250;
+    const scanContext = scanCanvas.getContext('2d', { alpha: false });
+    const queueStorageKey = 'inventoryScannerQueue:' + sessionId;
+    let scanQueue = loadPendingQueue();
+    let retryTimer = null;
 
     function normalizeBarcode(value) {
       return String(value || '').trim().replace(/\s+/g, '');
@@ -430,7 +441,7 @@
       try {
         const dashboard = await jsonpRequest('session');
         updateStats(dashboard);
-        document.getElementById('connectionPill').textContent = 'Онлайн';
+        updateConnectionPill();
         showResult('', 'Готово', 'Наведи перший штрих-код', '', '');
       } catch (error) {
         document.getElementById('connectionPill').textContent = 'Помилка';
@@ -452,7 +463,9 @@
         } else {
           throw new Error('Бібліотека розпізнавання не завантажилась');
         }
-        setFooter('Камера активна. Після сигналу відведи код із рамки та наведи наступний.');
+        setFooter('Швидкий режим активний. Камера не чекає відповіді сервера.');
+        updateConnectionPill();
+        processQueue();
       } catch (error) {
         showResult('error', 'Не вдалося відкрити камеру', error.message || String(error), '', '');
         setFooter('Перевір дозвіл камери для цієї сторінки');
@@ -464,8 +477,9 @@
         audio: false,
         video: {
           facingMode: { ideal: 'environment' },
-          width: { ideal: 1920 },
-          height: { ideal: 1080 },
+          width: { ideal: 1280, max: 1280 },
+          height: { ideal: 720, max: 720 },
+          frameRate: { ideal: 24, max: 30 },
           focusMode: { ideal: 'continuous' }
         }
       });
@@ -485,25 +499,48 @@
       nativeDetectionLoop();
     }
 
+    function drawScanRegion() {
+      const video = document.getElementById('video');
+      const sourceWidth = video.videoWidth || 1280;
+      const sourceHeight = video.videoHeight || 720;
+
+      // Область відповідає рамці: майже вся ширина і приблизно центральна третина.
+      const cropWidth = Math.floor(sourceWidth * 0.88);
+      const cropHeight = Math.floor(sourceHeight * 0.34);
+      const cropX = Math.floor((sourceWidth - cropWidth) / 2);
+      const cropY = Math.floor((sourceHeight - cropHeight) / 2);
+
+      scanContext.drawImage(
+        video,
+        cropX, cropY, cropWidth, cropHeight,
+        0, 0, scanCanvas.width, scanCanvas.height
+      );
+
+      return scanCanvas;
+    }
+
     async function nativeDetectionLoop() {
       if (!detector || !stream) return;
 
-      if (!paused && !apiBusy) {
+      if (!paused && !detectorRunning) {
+        detectorRunning = true;
         try {
-          const results = await detector.detect(document.getElementById('video'));
+          const results = await detector.detect(drawScanRegion());
           if (results && results.length) {
             lastCodeSeenAt = Date.now();
             const code = normalizeBarcode(results[0].rawValue);
-            if (code && code !== blockedCode) processCode(code);
-          } else if (blockedCode && Date.now() - lastCodeSeenAt > 550) {
+            if (code && code !== blockedCode) queueCode(code);
+          } else if (blockedCode && Date.now() - lastCodeSeenAt > 750) {
             blockedCode = '';
           }
         } catch (error) {
-          // Окремі кадри іноді не читаються. Це не причина зупиняти камеру.
+          // Пропущений кадр не зупиняє сканер.
+        } finally {
+          detectorRunning = false;
         }
       }
 
-      detectorTimer = setTimeout(nativeDetectionLoop, 130);
+      detectorTimer = setTimeout(nativeDetectionLoop, 170);
     }
 
     async function startZxingDetector() {
@@ -511,17 +548,17 @@
       const video = document.getElementById('video');
 
       zxingControls = await zxingReader.decodeFromConstraints(
-        { audio: false, video: { facingMode: { ideal: 'environment' } } },
+        { audio: false, video: { facingMode: { ideal: 'environment' }, width: { ideal: 960, max: 1280 }, height: { ideal: 540, max: 720 }, frameRate: { ideal: 20, max: 24 } } },
         video,
         (result, error, controls) => {
           if (controls) zxingControls = controls;
-          if (paused || apiBusy) return;
+          if (paused) return;
 
           if (result) {
             lastCodeSeenAt = Date.now();
             const code = normalizeBarcode(result.getText ? result.getText() : String(result));
-            if (code && code !== blockedCode) processCode(code);
-          } else if (blockedCode && Date.now() - lastCodeSeenAt > 700) {
+            if (code && code !== blockedCode) queueCode(code);
+          } else if (blockedCode && Date.now() - lastCodeSeenAt > 850) {
             blockedCode = '';
           }
         }
@@ -531,33 +568,107 @@
       configureTorchButton();
     }
 
-    async function processCode(code) {
-      if (!code || apiBusy || paused) return;
+    function loadPendingQueue() {
+      try {
+        const parsed = JSON.parse(localStorage.getItem(queueStorageKey) || '[]');
+        return Array.isArray(parsed) ? parsed : [];
+      } catch (error) {
+        return [];
+      }
+    }
+
+    function savePendingQueue() {
+      try {
+        localStorage.setItem(queueStorageKey, JSON.stringify(scanQueue));
+      } catch (error) {
+        // Збереження черги є страховкою, а не умовою роботи.
+      }
+    }
+
+    function updateConnectionPill() {
+      const pill = document.getElementById('connectionPill');
+      if (apiBusy || scanQueue.length) {
+        pill.textContent = 'Черга: ' + scanQueue.length;
+      } else {
+        pill.textContent = 'Онлайн';
+      }
+    }
+
+    function queueCode(code) {
+      if (!code || paused) return;
+
       blockedCode = code;
       lastCodeSeenAt = Date.now();
+
+      scanQueue.push({
+        id: Date.now() + '-' + Math.random().toString(16).slice(2),
+        code: code,
+        createdAt: Date.now(),
+        attempts: 0
+      });
+      savePendingQueue();
+      updateConnectionPill();
+
+      // Миттєвий відгук: камера одразу готова до наступного товару.
+      showResult('', 'Код прийнято', code, 'Зберігаємо у фоновому режимі', 'У черзі: ' + scanQueue.length);
+      signalQueued();
+      setFooter('Відведи код із рамки та наведи наступний. Збереження йде у фоні.');
+      processQueue();
+    }
+
+    async function processQueue() {
+      if (apiBusy || !scanQueue.length) {
+        updateConnectionPill();
+        return;
+      }
+
+      clearTimeout(retryTimer);
+      retryTimer = null;
       apiBusy = true;
-      setFooter('Перевіряємо ' + code + '…');
+      updateConnectionPill();
+      const item = scanQueue[0];
+      item.attempts = Number(item.attempts || 0) + 1;
+      savePendingQueue();
+      let saved = false;
 
       try {
-        const result = await jsonpRequest('scan', { barcode: code });
+        const result = await jsonpRequest('scan', { barcode: item.code });
         updateStats(result.dashboard);
 
         if (result.status === 'found') {
-          showResult('found', 'Товар знайдено', result.name || 'Без назви', 'Штрих-код: ' + code, 'Фактично: ' + Number(result.actualQty || 0));
-          signalSuccess();
+          showResult('found', 'Товар знайдено', result.name || 'Без назви', 'Штрих-код: ' + item.code, 'Фактично: ' + Number(result.actualQty || 0));
         } else {
-          showResult('unknown', 'Невідомий код', code, 'Код записано до списку нерозпізнаних', 'Кількість: ' + Number(result.unknownQty || 0));
+          showResult('unknown', 'Невідомий код', item.code, 'Код записано до списку нерозпізнаних', 'Кількість: ' + Number(result.unknownQty || 0));
           signalUnknown();
         }
 
-        setFooter('Зараховано. Відведи код із рамки та наведи наступний.');
+        scanQueue.shift();
+        savePendingQueue();
+        saved = true;
+        setFooter(scanQueue.length
+          ? 'Збережено. У черзі ще: ' + scanQueue.length
+          : 'Усе збережено. Наведи наступний штрих-код.');
       } catch (error) {
-        showResult('error', 'Помилка', error.message || String(error), 'Код: ' + code, '');
-        blockedCode = '';
-        signalError();
+        showResult('error', 'Немає зв’язку', 'Код лишився у черзі та буде повторений', 'Код: ' + item.code, 'Спроба: ' + item.attempts);
+        if (item.attempts === 1) signalError();
       } finally {
         apiBusy = false;
+        updateConnectionPill();
       }
+
+      if (saved && scanQueue.length) {
+        setTimeout(processQueue, 80);
+      } else if (!saved && scanQueue.length) {
+        retryTimer = setTimeout(() => {
+          retryTimer = null;
+          processQueue();
+        }, Math.min(6000, 1200 * item.attempts));
+      }
+    }
+
+    function signalQueued() {
+      if (navigator.vibrate) navigator.vibrate(45);
+      beep(980, 0.045);
     }
 
     function signalSuccess() {
@@ -636,10 +747,14 @@
       if (!code) return;
       input.value = '';
       blockedCode = '';
-      processCode(code);
+      queueCode(code);
     }
 
     function closeScanner() {
+      if (scanQueue.length) {
+        const proceed = confirm('У черзі ще ' + scanQueue.length + ' код(ів). Вони збережені на телефоні й продовжать відправлення після повторного відкриття. Закрити сканер?');
+        if (!proceed) return;
+      }
       stopCamera();
       if (window.opener) window.close();
       if (returnUrl) location.href = returnUrl;
@@ -647,6 +762,7 @@
 
     function stopCamera() {
       clearTimeout(detectorTimer);
+      clearTimeout(retryTimer);
       detectorTimer = null;
       detector = null;
 
@@ -666,6 +782,7 @@
 
     loadSession();
     startCamera();
+    processQueue();
   </script>
 </body>
 </html>
