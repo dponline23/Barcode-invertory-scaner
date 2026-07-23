@@ -1,0 +1,2 @@
+# Barcode-invertory-scaner
+codescaner
