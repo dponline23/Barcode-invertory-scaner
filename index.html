@@ -1,0 +1,671 @@
+<!doctype html>
+<html lang="uk">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#101820">
+  <title>Активний сканер інвентаризації</title>
+  <script src="https://unpkg.com/@zxing/browser@0.1.5/umd/index.min.js"></script>
+  <style>
+    :root {
+      --bg: #0e141a;
+      --panel: #172028;
+      --text: #f7f9fb;
+      --muted: #a8b3bd;
+      --green: #0a8b4b;
+      --green2: #10b866;
+      --red: #b62b2b;
+      --amber: #d99519;
+      --blue: #2670ad;
+      --line: rgba(255,255,255,.15);
+    }
+
+    * { box-sizing: border-box; }
+
+    html, body {
+      margin: 0;
+      min-height: 100%;
+      background: var(--bg);
+      color: var(--text);
+      font-family: Arial, sans-serif;
+    }
+
+    body {
+      min-height: 100dvh;
+      padding: env(safe-area-inset-top) 0 env(safe-area-inset-bottom);
+    }
+
+    button, input { font: inherit; }
+
+    .app {
+      width: min(760px, 100%);
+      min-height: 100dvh;
+      margin: 0 auto;
+      display: flex;
+      flex-direction: column;
+      background: var(--bg);
+    }
+
+    .header {
+      padding: 12px 14px;
+      border-bottom: 1px solid var(--line);
+      background: rgba(15, 22, 28, .96);
+      position: sticky;
+      top: 0;
+      z-index: 20;
+    }
+
+    .headerRow {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+    }
+
+    .title {
+      font-size: 19px;
+      font-weight: 800;
+      line-height: 1.2;
+    }
+
+    .location {
+      margin-top: 3px;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .statusPill {
+      flex: 0 0 auto;
+      padding: 7px 10px;
+      border-radius: 999px;
+      background: rgba(10,139,75,.2);
+      color: #a9f3cf;
+      font-size: 12px;
+      font-weight: 700;
+    }
+
+    .cameraWrap {
+      position: relative;
+      flex: 1 1 auto;
+      min-height: 46dvh;
+      background: #000;
+      overflow: hidden;
+    }
+
+    video {
+      width: 100%;
+      height: 100%;
+      min-height: 46dvh;
+      object-fit: cover;
+      display: block;
+      background: #000;
+    }
+
+    .shade {
+      position: absolute;
+      inset: 0;
+      background: rgba(0,0,0,.34);
+      pointer-events: none;
+    }
+
+    .scanFrame {
+      position: absolute;
+      left: 7%;
+      right: 7%;
+      top: 50%;
+      height: 31%;
+      transform: translateY(-50%);
+      border: 3px solid #fff;
+      border-radius: 16px;
+      box-shadow: 0 0 0 9999px rgba(0,0,0,.36), 0 0 20px rgba(255,255,255,.35);
+      pointer-events: none;
+    }
+
+    .scanFrame::before,
+    .scanFrame::after {
+      content: '';
+      position: absolute;
+      width: 42px;
+      height: 42px;
+      border-color: #22e17e;
+      border-style: solid;
+    }
+
+    .scanFrame::before {
+      left: -4px;
+      top: -4px;
+      border-width: 5px 0 0 5px;
+      border-radius: 14px 0 0 0;
+    }
+
+    .scanFrame::after {
+      right: -4px;
+      bottom: -4px;
+      border-width: 0 5px 5px 0;
+      border-radius: 0 0 14px 0;
+    }
+
+    .scanLine {
+      position: absolute;
+      left: 5%;
+      right: 5%;
+      top: 50%;
+      height: 2px;
+      background: #22e17e;
+      box-shadow: 0 0 9px #22e17e;
+      animation: sweep 1.8s ease-in-out infinite alternate;
+    }
+
+    @keyframes sweep {
+      from { transform: translateY(-50px); }
+      to { transform: translateY(50px); }
+    }
+
+    .hint {
+      position: absolute;
+      left: 10px;
+      right: 10px;
+      bottom: 12px;
+      padding: 8px 10px;
+      border-radius: 9px;
+      background: rgba(0,0,0,.68);
+      text-align: center;
+      font-size: 13px;
+      pointer-events: none;
+    }
+
+    .controls {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 8px;
+      padding: 10px;
+      background: var(--panel);
+      border-top: 1px solid var(--line);
+    }
+
+    button {
+      border: 0;
+      border-radius: 10px;
+      padding: 12px 8px;
+      color: #fff;
+      background: #3b4650;
+      font-weight: 700;
+    }
+
+    button:disabled { opacity: .48; }
+    .green { background: var(--green); }
+    .red { background: var(--red); }
+    .blue { background: var(--blue); }
+
+    .result {
+      margin: 10px;
+      padding: 12px;
+      border-radius: 12px;
+      background: var(--panel);
+      border-left: 5px solid #54616c;
+      min-height: 90px;
+    }
+
+    .result.found { border-left-color: var(--green2); }
+    .result.unknown { border-left-color: var(--amber); }
+    .result.error { border-left-color: var(--red); }
+
+    .resultStatus {
+      font-size: 13px;
+      font-weight: 800;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+
+    .resultName {
+      margin-top: 5px;
+      font-size: 18px;
+      font-weight: 800;
+      line-height: 1.25;
+    }
+
+    .resultMeta {
+      margin-top: 5px;
+      color: var(--muted);
+      font-size: 13px;
+      overflow-wrap: anywhere;
+    }
+
+    .resultQty {
+      margin-top: 6px;
+      font-size: 16px;
+      font-weight: 800;
+    }
+
+    .stats {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 7px;
+      padding: 0 10px 10px;
+    }
+
+    .stat {
+      padding: 8px 4px;
+      border: 1px solid var(--line);
+      border-radius: 9px;
+      background: var(--panel);
+      text-align: center;
+    }
+
+    .statValue { font-size: 18px; font-weight: 800; }
+    .statLabel { margin-top: 2px; color: var(--muted); font-size: 10px; line-height: 1.15; }
+
+    .manual {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 8px;
+      padding: 0 10px 10px;
+    }
+
+    .manual input {
+      min-width: 0;
+      padding: 12px;
+      border: 1px solid #68737d;
+      border-radius: 10px;
+      background: #fff;
+      color: #111;
+      font-size: 16px;
+    }
+
+    .footerStatus {
+      padding: 0 12px 12px;
+      color: var(--muted);
+      font-size: 12px;
+      text-align: center;
+    }
+
+    @media (max-width: 430px) {
+      .title { font-size: 17px; }
+      .controls button { font-size: 13px; }
+      .stats { gap: 5px; }
+      .statLabel { font-size: 9px; }
+      .manual { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <main class="app">
+    <header class="header">
+      <div class="headerRow">
+        <div>
+          <div id="sessionName" class="title">Інвентаризація</div>
+          <div id="sessionLocation" class="location"></div>
+        </div>
+        <div id="connectionPill" class="statusPill">Підключення…</div>
+      </div>
+    </header>
+
+    <section class="cameraWrap">
+      <video id="video" playsinline muted></video>
+      <div class="shade"></div>
+      <div class="scanFrame"><div class="scanLine"></div></div>
+      <div id="cameraHint" class="hint">Наведи штрих-код у рамку та затримай на мить</div>
+    </section>
+
+    <section class="controls">
+      <button id="torchBtn" onclick="toggleTorch()" disabled>🔦 Ліхтарик</button>
+      <button id="pauseBtn" class="blue" onclick="togglePause()">⏸ Пауза</button>
+      <button class="red" onclick="closeScanner()">✕ Закрити</button>
+    </section>
+
+    <section id="resultCard" class="result">
+      <div id="resultStatus" class="resultStatus">Готовність</div>
+      <div id="resultName" class="resultName">Запускаємо камеру…</div>
+      <div id="resultMeta" class="resultMeta"></div>
+      <div id="resultQty" class="resultQty"></div>
+    </section>
+
+    <section class="stats">
+      <div class="stat"><div id="statProducts" class="statValue">0</div><div class="statLabel">позицій</div></div>
+      <div class="stat"><div id="statKnown" class="statValue">0</div><div class="statLabel">відомих</div></div>
+      <div class="stat"><div id="statUnknown" class="statValue">0</div><div class="statLabel">невідомих</div></div>
+      <div class="stat"><div id="statTotal" class="statValue">0</div><div class="statLabel">усього</div></div>
+    </section>
+
+    <section class="manual">
+      <input id="manualBarcode" inputmode="numeric" placeholder="Ввести штрих-код вручну" onkeydown="manualKeydown(event)">
+      <button class="green" onclick="submitManual()">Зарахувати +1</button>
+    </section>
+
+    <div id="footerStatus" class="footerStatus">Очікуємо дозвіл на камеру</div>
+  </main>
+
+  <script>
+    const params = new URLSearchParams(location.search);
+    const apiUrl = params.get('api') || '';
+    const apiToken = params.get('token') || '';
+    const sessionId = params.get('session') || '';
+    const returnUrl = params.get('returnUrl') || '';
+
+    document.getElementById('sessionName').textContent = params.get('name') || 'Інвентаризація';
+    document.getElementById('sessionLocation').textContent = params.get('location') || '';
+
+    let stream = null;
+    let detector = null;
+    let detectorTimer = null;
+    let zxingReader = null;
+    let zxingControls = null;
+    let paused = false;
+    let apiBusy = false;
+    let blockedCode = '';
+    let lastCodeSeenAt = 0;
+    let torchOn = false;
+    let audioContext = null;
+
+    function normalizeBarcode(value) {
+      return String(value || '').trim().replace(/\s+/g, '');
+    }
+
+    function setFooter(text) {
+      document.getElementById('footerStatus').textContent = text || '';
+    }
+
+    function showResult(type, status, name, meta, qty) {
+      const card = document.getElementById('resultCard');
+      card.className = 'result' + (type ? ' ' + type : '');
+      document.getElementById('resultStatus').textContent = status || '';
+      document.getElementById('resultName').textContent = name || '';
+      document.getElementById('resultMeta').textContent = meta || '';
+      document.getElementById('resultQty').textContent = qty || '';
+    }
+
+    function updateStats(dashboard) {
+      const stats = dashboard && dashboard.stats ? dashboard.stats : {};
+      document.getElementById('statProducts').textContent = Number(stats.countedProducts || 0);
+      document.getElementById('statKnown').textContent = Number(stats.knownUnits || 0);
+      document.getElementById('statUnknown').textContent = Number(stats.unknownUnits || 0);
+      document.getElementById('statTotal').textContent = Number(stats.totalUnits || 0);
+    }
+
+    function jsonpRequest(action, extra) {
+      return new Promise((resolve, reject) => {
+        if (!apiUrl || !apiToken || !sessionId) {
+          reject(new Error('У посиланні сканера відсутні параметри api, token або session'));
+          return;
+        }
+
+        const callbackName = '__scannerCb_' + Date.now() + '_' + Math.floor(Math.random() * 100000);
+        const script = document.createElement('script');
+        const timeout = setTimeout(() => cleanup(new Error('Сервер не відповів за 20 секунд')), 20000);
+
+        function cleanup(error, data) {
+          clearTimeout(timeout);
+          delete window[callbackName];
+          script.remove();
+          if (error) reject(error);
+          else resolve(data);
+        }
+
+        window[callbackName] = payload => {
+          if (!payload || payload.ok !== true) {
+            cleanup(new Error(payload && payload.error ? payload.error : 'Невідома помилка сервера'));
+            return;
+          }
+          cleanup(null, payload.result);
+        };
+
+        const url = new URL(apiUrl);
+        url.searchParams.set('inventoryApi', '1');
+        url.searchParams.set('action', action);
+        url.searchParams.set('session', sessionId);
+        url.searchParams.set('token', apiToken);
+        url.searchParams.set('callback', callbackName);
+
+        Object.entries(extra || {}).forEach(([key, value]) => {
+          url.searchParams.set(key, String(value));
+        });
+
+        script.onerror = () => cleanup(new Error('Не вдалося підключитися до Apps Script'));
+        script.src = url.toString();
+        document.head.appendChild(script);
+      });
+    }
+
+    async function loadSession() {
+      try {
+        const dashboard = await jsonpRequest('session');
+        updateStats(dashboard);
+        document.getElementById('connectionPill').textContent = 'Онлайн';
+        showResult('', 'Готово', 'Наведи перший штрих-код', '', '');
+      } catch (error) {
+        document.getElementById('connectionPill').textContent = 'Помилка';
+        showResult('error', 'Помилка', error.message || String(error), '', '');
+      }
+    }
+
+    async function startCamera() {
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        showResult('error', 'Камера недоступна', 'Відкрий сторінку в Chrome через HTTPS', '', '');
+        return;
+      }
+
+      try {
+        if ('BarcodeDetector' in window) {
+          await startNativeDetector();
+        } else if (window.ZXingBrowser) {
+          await startZxingDetector();
+        } else {
+          throw new Error('Бібліотека розпізнавання не завантажилась');
+        }
+        setFooter('Камера активна. Після сигналу відведи код із рамки та наведи наступний.');
+      } catch (error) {
+        showResult('error', 'Не вдалося відкрити камеру', error.message || String(error), '', '');
+        setFooter('Перевір дозвіл камери для цієї сторінки');
+      }
+    }
+
+    async function startNativeDetector() {
+      stream = await navigator.mediaDevices.getUserMedia({
+        audio: false,
+        video: {
+          facingMode: { ideal: 'environment' },
+          width: { ideal: 1920 },
+          height: { ideal: 1080 },
+          focusMode: { ideal: 'continuous' }
+        }
+      });
+
+      const video = document.getElementById('video');
+      video.srcObject = stream;
+      await video.play();
+
+      const supported = BarcodeDetector.getSupportedFormats
+        ? await BarcodeDetector.getSupportedFormats()
+        : ['ean_13'];
+      const preferred = ['ean_13', 'ean_8', 'upc_a', 'upc_e', 'code_128'];
+      const formats = preferred.filter(format => supported.includes(format));
+      detector = new BarcodeDetector({ formats: formats.length ? formats : undefined });
+
+      configureTorchButton();
+      nativeDetectionLoop();
+    }
+
+    async function nativeDetectionLoop() {
+      if (!detector || !stream) return;
+
+      if (!paused && !apiBusy) {
+        try {
+          const results = await detector.detect(document.getElementById('video'));
+          if (results && results.length) {
+            lastCodeSeenAt = Date.now();
+            const code = normalizeBarcode(results[0].rawValue);
+            if (code && code !== blockedCode) processCode(code);
+          } else if (blockedCode && Date.now() - lastCodeSeenAt > 550) {
+            blockedCode = '';
+          }
+        } catch (error) {
+          // Окремі кадри іноді не читаються. Це не причина зупиняти камеру.
+        }
+      }
+
+      detectorTimer = setTimeout(nativeDetectionLoop, 130);
+    }
+
+    async function startZxingDetector() {
+      zxingReader = new ZXingBrowser.BrowserMultiFormatReader();
+      const video = document.getElementById('video');
+
+      zxingControls = await zxingReader.decodeFromConstraints(
+        { audio: false, video: { facingMode: { ideal: 'environment' } } },
+        video,
+        (result, error, controls) => {
+          if (controls) zxingControls = controls;
+          if (paused || apiBusy) return;
+
+          if (result) {
+            lastCodeSeenAt = Date.now();
+            const code = normalizeBarcode(result.getText ? result.getText() : String(result));
+            if (code && code !== blockedCode) processCode(code);
+          } else if (blockedCode && Date.now() - lastCodeSeenAt > 700) {
+            blockedCode = '';
+          }
+        }
+      );
+
+      stream = video.srcObject;
+      configureTorchButton();
+    }
+
+    async function processCode(code) {
+      if (!code || apiBusy || paused) return;
+      blockedCode = code;
+      lastCodeSeenAt = Date.now();
+      apiBusy = true;
+      setFooter('Перевіряємо ' + code + '…');
+
+      try {
+        const result = await jsonpRequest('scan', { barcode: code });
+        updateStats(result.dashboard);
+
+        if (result.status === 'found') {
+          showResult('found', 'Товар знайдено', result.name || 'Без назви', 'Штрих-код: ' + code, 'Фактично: ' + Number(result.actualQty || 0));
+          signalSuccess();
+        } else {
+          showResult('unknown', 'Невідомий код', code, 'Код записано до списку нерозпізнаних', 'Кількість: ' + Number(result.unknownQty || 0));
+          signalUnknown();
+        }
+
+        setFooter('Зараховано. Відведи код із рамки та наведи наступний.');
+      } catch (error) {
+        showResult('error', 'Помилка', error.message || String(error), 'Код: ' + code, '');
+        blockedCode = '';
+        signalError();
+      } finally {
+        apiBusy = false;
+      }
+    }
+
+    function signalSuccess() {
+      if (navigator.vibrate) navigator.vibrate(90);
+      beep(880, 0.08);
+    }
+
+    function signalUnknown() {
+      if (navigator.vibrate) navigator.vibrate([90, 60, 90]);
+      beep(520, 0.13);
+    }
+
+    function signalError() {
+      if (navigator.vibrate) navigator.vibrate([160, 80, 160]);
+      beep(260, 0.18);
+    }
+
+    function beep(frequency, duration) {
+      try {
+        audioContext = audioContext || new (window.AudioContext || window.webkitAudioContext)();
+        const oscillator = audioContext.createOscillator();
+        const gain = audioContext.createGain();
+        oscillator.frequency.value = frequency;
+        gain.gain.value = 0.08;
+        oscillator.connect(gain);
+        gain.connect(audioContext.destination);
+        oscillator.start();
+        oscillator.stop(audioContext.currentTime + duration);
+      } catch (error) {
+        // Звук необов'язковий.
+      }
+    }
+
+    function configureTorchButton() {
+      const track = getVideoTrack();
+      const capabilities = track && track.getCapabilities ? track.getCapabilities() : {};
+      document.getElementById('torchBtn').disabled = !capabilities.torch;
+    }
+
+    function getVideoTrack() {
+      const current = stream || document.getElementById('video').srcObject;
+      return current && current.getVideoTracks ? current.getVideoTracks()[0] : null;
+    }
+
+    async function toggleTorch() {
+      const track = getVideoTrack();
+      if (!track) return;
+
+      try {
+        torchOn = !torchOn;
+        await track.applyConstraints({ advanced: [{ torch: torchOn }] });
+        document.getElementById('torchBtn').textContent = torchOn ? '🔦 Вимкнути' : '🔦 Ліхтарик';
+      } catch (error) {
+        torchOn = false;
+        document.getElementById('torchBtn').textContent = '🔦 Недоступно';
+        document.getElementById('torchBtn').disabled = true;
+      }
+    }
+
+    function togglePause() {
+      paused = !paused;
+      document.getElementById('pauseBtn').textContent = paused ? '▶ Продовжити' : '⏸ Пауза';
+      document.getElementById('cameraHint').textContent = paused
+        ? 'Сканування призупинено'
+        : 'Наведи штрих-код у рамку та затримай на мить';
+      if (!paused) blockedCode = '';
+    }
+
+    function manualKeydown(event) {
+      if (event.key === 'Enter') submitManual();
+    }
+
+    function submitManual() {
+      const input = document.getElementById('manualBarcode');
+      const code = normalizeBarcode(input.value);
+      if (!code) return;
+      input.value = '';
+      blockedCode = '';
+      processCode(code);
+    }
+
+    function closeScanner() {
+      stopCamera();
+      if (window.opener) window.close();
+      if (returnUrl) location.href = returnUrl;
+    }
+
+    function stopCamera() {
+      clearTimeout(detectorTimer);
+      detectorTimer = null;
+      detector = null;
+
+      if (zxingControls && zxingControls.stop) {
+        try { zxingControls.stop(); } catch (error) {}
+      }
+      zxingControls = null;
+
+      const activeStream = stream || document.getElementById('video').srcObject;
+      if (activeStream && activeStream.getTracks) {
+        activeStream.getTracks().forEach(track => track.stop());
+      }
+      stream = null;
+    }
+
+    window.addEventListener('beforeunload', stopCamera);
+
+    loadSession();
+    startCamera();
+  </script>
+</body>
+</html>
