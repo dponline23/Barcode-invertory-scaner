@@ -3,336 +3,213 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <meta name="theme-color" content="#101820">
-  <title>Активний сканер інвентаризації v4.1 FAST</title>
-  <script src="https://unpkg.com/@zxing/browser@0.1.5/umd/index.min.js"></script>
+  <meta name="theme-color" content="#050807">
+  <title>Сканер інвентаризації v4.2 LITE</title>
   <style>
-    :root {
-      --bg: #0e141a;
-      --panel: #172028;
-      --text: #f7f9fb;
-      --muted: #a8b3bd;
-      --green: #0a8b4b;
-      --green2: #10b866;
-      --red: #b62b2b;
-      --amber: #d99519;
-      --blue: #2670ad;
-      --line: rgba(255,255,255,.15);
-    }
-
     * { box-sizing: border-box; }
-
     html, body {
       margin: 0;
+      width: 100%;
       min-height: 100%;
-      background: var(--bg);
-      color: var(--text);
+      background: #050807;
+      color: #fff;
       font-family: Arial, sans-serif;
     }
-
-    body {
-      min-height: 100dvh;
-      padding: env(safe-area-inset-top) 0 env(safe-area-inset-bottom);
-    }
-
+    body { min-height: 100dvh; }
     button, input { font: inherit; }
 
     .app {
-      width: min(760px, 100%);
+      width: min(720px, 100%);
       min-height: 100dvh;
       margin: 0 auto;
-      display: flex;
-      flex-direction: column;
-      background: var(--bg);
+      display: grid;
+      grid-template-rows: auto minmax(300px, 1fr) auto auto;
+      background: #050807;
     }
 
-    .header {
-      padding: 12px 14px;
-      border-bottom: 1px solid var(--line);
-      background: rgba(15, 22, 28, .96);
-      position: sticky;
-      top: 0;
-      z-index: 20;
-    }
-
-    .headerRow {
-      display: flex;
+    .top {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 8px;
       align-items: center;
-      justify-content: space-between;
-      gap: 10px;
+      padding: 9px 10px;
+      background: #111714;
+      border-bottom: 1px solid #334039;
     }
-
-    .title {
-      font-size: 19px;
-      font-weight: 800;
-      line-height: 1.2;
-    }
-
-    .location {
-      margin-top: 3px;
-      color: var(--muted);
-      font-size: 13px;
-    }
-
-    .statusPill {
-      flex: 0 0 auto;
-      padding: 7px 10px;
-      border-radius: 999px;
-      background: rgba(10,139,75,.2);
-      color: #a9f3cf;
-      font-size: 12px;
+    .name {
+      font-size: 16px;
       font-weight: 700;
-    }
-
-    .cameraWrap {
-      position: relative;
-      flex: 1 1 auto;
-      min-height: 46dvh;
-      background: #000;
       overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .sub {
+      margin-top: 2px;
+      color: #aeb8b2;
+      font-size: 11px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .pill {
+      padding: 6px 8px;
+      border-radius: 6px;
+      background: #1d3026;
+      color: #b8f2ce;
+      font-size: 11px;
+      font-weight: 700;
+      white-space: nowrap;
     }
 
+    .camera {
+      position: relative;
+      min-height: 300px;
+      overflow: hidden;
+      background: #000;
+      contain: strict;
+    }
     video {
       width: 100%;
       height: 100%;
-      min-height: 46dvh;
-      object-fit: cover;
+      min-height: 300px;
       display: block;
+      object-fit: cover;
       background: #000;
     }
-
-    .shade {
-      position: absolute;
-      inset: 0;
-      background: rgba(0,0,0,.34);
-      pointer-events: none;
-    }
-
-    .scanFrame {
-      position: absolute;
-      left: 7%;
-      right: 7%;
-      top: 50%;
-      height: 31%;
-      transform: translateY(-50%);
-      border: 3px solid #fff;
-      border-radius: 16px;
-      box-shadow: 0 0 0 9999px rgba(0,0,0,.36), 0 0 20px rgba(255,255,255,.35);
-      pointer-events: none;
-    }
-
-    .scanFrame::before,
-    .scanFrame::after {
-      content: '';
-      position: absolute;
-      width: 42px;
-      height: 42px;
-      border-color: #22e17e;
-      border-style: solid;
-    }
-
-    .scanFrame::before {
-      left: -4px;
-      top: -4px;
-      border-width: 5px 0 0 5px;
-      border-radius: 14px 0 0 0;
-    }
-
-    .scanFrame::after {
-      right: -4px;
-      bottom: -4px;
-      border-width: 0 5px 5px 0;
-      border-radius: 0 0 14px 0;
-    }
-
-    .scanLine {
+    .frame {
       position: absolute;
       left: 5%;
       right: 5%;
       top: 50%;
-      height: 2px;
-      background: #22e17e;
-      box-shadow: 0 0 9px #22e17e;
-      animation: sweep 1.8s ease-in-out infinite alternate;
+      height: 31%;
+      transform: translateY(-50%);
+      border: 2px solid #20db73;
+      pointer-events: none;
     }
-
-    @keyframes sweep {
-      from { transform: translateY(-50px); }
-      to { transform: translateY(50px); }
-    }
-
-    .hint {
+    .guide {
       position: absolute;
-      left: 10px;
-      right: 10px;
-      bottom: 12px;
-      padding: 8px 10px;
-      border-radius: 9px;
-      background: rgba(0,0,0,.68);
-      text-align: center;
-      font-size: 13px;
+      left: 5%;
+      right: 5%;
+      top: 50%;
+      height: 1px;
+      background: #20db73;
+      pointer-events: none;
+    }
+    .distance {
+      position: absolute;
+      left: 50%;
+      bottom: 8px;
+      transform: translateX(-50%);
+      padding: 5px 8px;
+      background: rgba(0,0,0,.72);
+      border-radius: 5px;
+      font-size: 11px;
+      white-space: nowrap;
       pointer-events: none;
     }
 
-    .controls {
-      display: grid;
-      grid-template-columns: repeat(3, 1fr);
-      gap: 8px;
-      padding: 10px;
-      background: var(--panel);
-      border-top: 1px solid var(--line);
+    .status {
+      padding: 9px 10px;
+      background: #111714;
+      border-top: 1px solid #334039;
+      border-bottom: 1px solid #334039;
+      min-height: 65px;
     }
-
-    button {
-      border: 0;
-      border-radius: 10px;
-      padding: 12px 8px;
-      color: #fff;
-      background: #3b4650;
-      font-weight: 700;
-    }
-
-    button:disabled { opacity: .48; }
-    .green { background: var(--green); }
-    .red { background: var(--red); }
-    .blue { background: var(--blue); }
-
-    .result {
-      margin: 10px;
-      padding: 12px;
-      border-radius: 12px;
-      background: var(--panel);
-      border-left: 5px solid #54616c;
-      min-height: 90px;
-    }
-
-    .result.found { border-left-color: var(--green2); }
-    .result.unknown { border-left-color: var(--amber); }
-    .result.error { border-left-color: var(--red); }
-
-    .resultStatus {
+    .statusTitle {
       font-size: 13px;
-      font-weight: 800;
-      text-transform: uppercase;
-      color: var(--muted);
-    }
-
-    .resultName {
-      margin-top: 5px;
-      font-size: 18px;
-      font-weight: 800;
+      font-weight: 700;
       line-height: 1.25;
     }
-
-    .resultMeta {
-      margin-top: 5px;
-      color: var(--muted);
-      font-size: 13px;
+    .statusMeta {
+      margin-top: 3px;
+      color: #aeb8b2;
+      font-size: 11px;
+      line-height: 1.25;
       overflow-wrap: anywhere;
     }
+    .ok { border-left: 4px solid #20db73; }
+    .warn { border-left: 4px solid #e0a229; }
+    .err { border-left: 4px solid #d94343; }
 
-    .resultQty {
-      margin-top: 6px;
-      font-size: 16px;
-      font-weight: 800;
-    }
-
-    .stats {
+    .controls {
       display: grid;
-      grid-template-columns: repeat(4, minmax(0, 1fr));
-      gap: 7px;
-      padding: 0 10px 10px;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 6px;
+      padding: 8px;
+      background: #0c110f;
     }
-
-    .stat {
-      padding: 8px 4px;
-      border: 1px solid var(--line);
-      border-radius: 9px;
-      background: var(--panel);
-      text-align: center;
+    button {
+      border: 0;
+      border-radius: 7px;
+      padding: 11px 6px;
+      color: #fff;
+      background: #3c4741;
+      font-weight: 700;
+      font-size: 13px;
     }
-
-    .statValue { font-size: 18px; font-weight: 800; }
-    .statLabel { margin-top: 2px; color: var(--muted); font-size: 10px; line-height: 1.15; }
+    button:disabled { opacity: .45; }
+    .green { background: #087b43; }
+    .red { background: #a92a2a; }
 
     .manual {
       display: grid;
       grid-template-columns: minmax(0, 1fr) auto;
-      gap: 8px;
-      padding: 0 10px 10px;
+      gap: 6px;
+      padding: 0 8px 8px;
+      background: #0c110f;
     }
-
-    .manual input {
+    input {
       min-width: 0;
-      padding: 12px;
-      border: 1px solid #68737d;
-      border-radius: 10px;
+      border: 1px solid #5c6862;
+      border-radius: 7px;
+      padding: 10px;
       background: #fff;
       color: #111;
-      font-size: 16px;
-    }
-
-    .footerStatus {
-      padding: 0 12px 12px;
-      color: var(--muted);
-      font-size: 12px;
-      text-align: center;
+      font-size: 15px;
     }
 
     @media (max-width: 430px) {
-      .title { font-size: 17px; }
-      .controls button { font-size: 13px; }
-      .stats { gap: 5px; }
-      .statLabel { font-size: 9px; }
+      .app { grid-template-rows: auto minmax(340px, 1fr) auto auto; }
+      .camera, video { min-height: 340px; }
+      .controls { grid-template-columns: 1fr 1fr; }
+      .controls .close { grid-column: 1 / -1; }
       .manual { grid-template-columns: 1fr; }
     }
   </style>
 </head>
 <body>
   <main class="app">
-    <header class="header">
-      <div class="headerRow">
-        <div>
-          <div id="sessionName" class="title">Інвентаризація</div>
-          <div id="sessionLocation" class="location"></div>
-        </div>
-        <div id="connectionPill" class="statusPill">Підключення…</div>
+    <header class="top">
+      <div>
+        <div id="sessionName" class="name">Інвентаризація</div>
+        <div id="sessionLocation" class="sub"></div>
       </div>
+      <div id="pill" class="pill">Запуск…</div>
     </header>
 
-    <section class="cameraWrap">
+    <section class="camera">
       <video id="video" playsinline muted></video>
-      <div class="shade"></div>
-      <div class="scanFrame"><div class="scanLine"></div></div>
-      <div id="cameraHint" class="hint">Наведи штрих-код у рамку та затримай на мить</div>
+      <div class="frame"></div>
+      <div class="guide"></div>
+      <div id="distance" class="distance">Тримай код на 8–12 см</div>
     </section>
 
-    <section class="controls">
-      <button id="torchBtn" onclick="toggleTorch()" disabled>🔦 Ліхтарик</button>
-      <button id="pauseBtn" class="blue" onclick="togglePause()">⏸ Пауза</button>
-      <button class="red" onclick="closeScanner()">✕ Закрити</button>
+    <section id="status" class="status">
+      <div id="statusTitle" class="statusTitle">Відкриваємо камеру…</div>
+      <div id="statusMeta" class="statusMeta">Без анімації, мінімальне навантаження</div>
     </section>
 
-    <section id="resultCard" class="result">
-      <div id="resultStatus" class="resultStatus">Готовність</div>
-      <div id="resultName" class="resultName">Запускаємо камеру…</div>
-      <div id="resultMeta" class="resultMeta"></div>
-      <div id="resultQty" class="resultQty"></div>
+    <section>
+      <div class="controls">
+        <button id="torchBtn" onclick="toggleTorch()" disabled>Ліхтарик</button>
+        <button id="pauseBtn" class="green" onclick="togglePause()">Пауза</button>
+        <button class="red close" onclick="closeScanner()">Закрити</button>
+      </div>
+      <div class="manual">
+        <input id="manualBarcode" inputmode="numeric" placeholder="Штрих-код вручну" onkeydown="manualKeydown(event)">
+        <button class="green" onclick="submitManual()">+1</button>
+      </div>
     </section>
-
-    <section class="stats">
-      <div class="stat"><div id="statProducts" class="statValue">0</div><div class="statLabel">позицій</div></div>
-      <div class="stat"><div id="statKnown" class="statValue">0</div><div class="statLabel">відомих</div></div>
-      <div class="stat"><div id="statUnknown" class="statValue">0</div><div class="statLabel">невідомих</div></div>
-      <div class="stat"><div id="statTotal" class="statValue">0</div><div class="statLabel">усього</div></div>
-    </section>
-
-    <section class="manual">
-      <input id="manualBarcode" inputmode="numeric" placeholder="Ввести штрих-код вручну" onkeydown="manualKeydown(event)">
-      <button class="green" onclick="submitManual()">Зарахувати +1</button>
-    </section>
-
-    <div id="footerStatus" class="footerStatus">Очікуємо дозвіл на камеру</div>
   </main>
 
   <script>
@@ -345,76 +222,80 @@
     document.getElementById('sessionName').textContent = params.get('name') || 'Інвентаризація';
     document.getElementById('sessionLocation').textContent = params.get('location') || '';
 
+    const TARGET_FOCUS_METERS = 0.10;
+    const DETECT_INTERVAL_MS = 230;
+    const UNBLOCK_AFTER_MS = 650;
+
     let stream = null;
     let detector = null;
     let detectorTimer = null;
-    let detectorRunning = false;
-    let zxingReader = null;
-    let zxingControls = null;
+    let detectorBusy = false;
     let paused = false;
-    let apiBusy = false;
     let blockedCode = '';
     let lastCodeSeenAt = 0;
-    let torchOn = false;
-    let audioContext = null;
-
-    // Швидкий режим: розпізнаємо лише центральну область, а серверні записи
-    // відправляємо у фоновій черзі, не заморожуючи камеру.
-    const scanCanvas = document.createElement('canvas');
-    scanCanvas.width = 720;
-    scanCanvas.height = 250;
-    const scanContext = scanCanvas.getContext('2d', { alpha: false });
-    const queueStorageKey = 'inventoryScannerQueue:' + sessionId;
-    let scanQueue = loadPendingQueue();
+    let apiBusy = false;
     let retryTimer = null;
+    let torchOn = false;
+    let focusLabel = 'Фокус: авто';
+
+    const canvas = document.createElement('canvas');
+    canvas.width = 480;
+    canvas.height = 150;
+    const ctx = canvas.getContext('2d', { alpha: false, desynchronized: true });
+
+    const queueStorageKey = 'inventoryScannerQueue:' + sessionId;
+    let scanQueue = loadQueue();
+
+    function text(id, value) {
+      const el = document.getElementById(id);
+      if (el && el.textContent !== String(value || '')) el.textContent = value || '';
+    }
+
+    function setStatus(type, title, meta) {
+      const box = document.getElementById('status');
+      box.className = 'status' + (type ? ' ' + type : '');
+      text('statusTitle', title);
+      text('statusMeta', meta);
+    }
+
+    function updatePill() {
+      text('pill', apiBusy || scanQueue.length ? 'Черга: ' + scanQueue.length : focusLabel);
+    }
 
     function normalizeBarcode(value) {
       return String(value || '').trim().replace(/\s+/g, '');
     }
 
-    function setFooter(text) {
-      document.getElementById('footerStatus').textContent = text || '';
+    function clamp(value, min, max) {
+      return Math.min(max, Math.max(min, value));
     }
 
-    function showResult(type, status, name, meta, qty) {
-      const card = document.getElementById('resultCard');
-      card.className = 'result' + (type ? ' ' + type : '');
-      document.getElementById('resultStatus').textContent = status || '';
-      document.getElementById('resultName').textContent = name || '';
-      document.getElementById('resultMeta').textContent = meta || '';
-      document.getElementById('resultQty').textContent = qty || '';
-    }
-
-    function updateStats(dashboard) {
-      const stats = dashboard && dashboard.stats ? dashboard.stats : {};
-      document.getElementById('statProducts').textContent = Number(stats.countedProducts || 0);
-      document.getElementById('statKnown').textContent = Number(stats.knownUnits || 0);
-      document.getElementById('statUnknown').textContent = Number(stats.unknownUnits || 0);
-      document.getElementById('statTotal').textContent = Number(stats.totalUnits || 0);
+    function nearestStep(value, min, step) {
+      if (!Number.isFinite(step) || step <= 0) return value;
+      return min + Math.round((value - min) / step) * step;
     }
 
     function jsonpRequest(action, extra) {
       return new Promise((resolve, reject) => {
         if (!apiUrl || !apiToken || !sessionId) {
-          reject(new Error('У посиланні сканера відсутні параметри api, token або session'));
+          reject(new Error('Немає параметрів підключення'));
           return;
         }
 
-        const callbackName = '__scannerCb_' + Date.now() + '_' + Math.floor(Math.random() * 100000);
+        const callbackName = '__scan_' + Date.now() + '_' + Math.floor(Math.random() * 100000);
         const script = document.createElement('script');
-        const timeout = setTimeout(() => cleanup(new Error('Сервер не відповів за 20 секунд')), 20000);
+        const timeout = setTimeout(() => cleanup(new Error('Сервер не відповів')), 18000);
 
         function cleanup(error, data) {
           clearTimeout(timeout);
           delete window[callbackName];
           script.remove();
-          if (error) reject(error);
-          else resolve(data);
+          error ? reject(error) : resolve(data);
         }
 
         window[callbackName] = payload => {
           if (!payload || payload.ok !== true) {
-            cleanup(new Error(payload && payload.error ? payload.error : 'Невідома помилка сервера'));
+            cleanup(new Error(payload && payload.error ? payload.error : 'Помилка сервера'));
             return;
           }
           cleanup(null, payload.result);
@@ -426,315 +307,262 @@
         url.searchParams.set('session', sessionId);
         url.searchParams.set('token', apiToken);
         url.searchParams.set('callback', callbackName);
+        Object.entries(extra || {}).forEach(([key, value]) => url.searchParams.set(key, String(value)));
 
-        Object.entries(extra || {}).forEach(([key, value]) => {
-          url.searchParams.set(key, String(value));
-        });
-
-        script.onerror = () => cleanup(new Error('Не вдалося підключитися до Apps Script'));
+        script.onerror = () => cleanup(new Error('Немає зв’язку з Apps Script'));
         script.src = url.toString();
         document.head.appendChild(script);
       });
     }
 
-    async function loadSession() {
-      try {
-        const dashboard = await jsonpRequest('session');
-        updateStats(dashboard);
-        updateConnectionPill();
-        showResult('', 'Готово', 'Наведи перший штрих-код', '', '');
-      } catch (error) {
-        document.getElementById('connectionPill').textContent = 'Помилка';
-        showResult('error', 'Помилка', error.message || String(error), '', '');
-      }
-    }
-
     async function startCamera() {
-      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-        showResult('error', 'Камера недоступна', 'Відкрий сторінку в Chrome через HTTPS', '', '');
+      if (!navigator.mediaDevices?.getUserMedia) {
+        setStatus('err', 'Камера недоступна', 'Відкрий сторінку у Chrome через HTTPS');
         return;
       }
 
       try {
+        stream = await navigator.mediaDevices.getUserMedia({
+          audio: false,
+          video: {
+            facingMode: { ideal: 'environment' },
+            width: { ideal: 640, max: 960 },
+            height: { ideal: 480, max: 540 },
+            frameRate: { ideal: 15, max: 20 },
+            resizeMode: { ideal: 'crop-and-scale' }
+          }
+        });
+
+        const video = document.getElementById('video');
+        video.srcObject = stream;
+        await video.play();
+
+        await configureFixedFocus();
+        configureTorch();
+
         if ('BarcodeDetector' in window) {
-          await startNativeDetector();
-        } else if (window.ZXingBrowser) {
-          await startZxingDetector();
+          const supported = BarcodeDetector.getSupportedFormats
+            ? await BarcodeDetector.getSupportedFormats()
+            : ['ean_13'];
+          const wanted = ['ean_13', 'ean_8', 'upc_a', 'code_128'];
+          const formats = wanted.filter(format => supported.includes(format));
+          detector = new BarcodeDetector({ formats: formats.length ? formats : undefined });
+          detectionLoop();
+          setStatus('ok', 'Готово до сканування', focusLabel + '. Тримай код на 8–12 см');
         } else {
-          throw new Error('Бібліотека розпізнавання не завантажилась');
+          await startZxingFallback();
         }
-        setFooter('Швидкий режим активний. Камера не чекає відповіді сервера.');
-        updateConnectionPill();
+
+        updatePill();
         processQueue();
       } catch (error) {
-        showResult('error', 'Не вдалося відкрити камеру', error.message || String(error), '', '');
-        setFooter('Перевір дозвіл камери для цієї сторінки');
+        setStatus('err', 'Не вдалося відкрити камеру', error.message || String(error));
       }
     }
 
-    async function startNativeDetector() {
-      stream = await navigator.mediaDevices.getUserMedia({
-        audio: false,
-        video: {
-          facingMode: { ideal: 'environment' },
-          width: { ideal: 1280, max: 1280 },
-          height: { ideal: 720, max: 720 },
-          frameRate: { ideal: 24, max: 30 },
-          focusMode: { ideal: 'continuous' }
+    async function configureFixedFocus() {
+      const track = getVideoTrack();
+      if (!track?.getCapabilities || !track.applyConstraints) {
+        focusLabel = 'Фокус: системний';
+        return;
+      }
+
+      const caps = track.getCapabilities() || {};
+      const modes = Array.isArray(caps.focusMode) ? caps.focusMode : [];
+      const range = caps.focusDistance;
+
+      try {
+        if (modes.includes('manual') && range && Number.isFinite(range.min) && Number.isFinite(range.max)) {
+          let target = clamp(TARGET_FOCUS_METERS, range.min, range.max);
+          target = nearestStep(target, range.min, Number(range.step || 0));
+          target = clamp(target, range.min, range.max);
+
+          await track.applyConstraints({
+            advanced: [{ focusMode: 'manual', focusDistance: target }]
+          });
+
+          focusLabel = 'Фокус: ' + Math.round(target * 100) + ' см';
+          text('distance', 'Фіксований фокус близько ' + Math.round(target * 100) + ' см');
+          return;
         }
-      });
 
-      const video = document.getElementById('video');
-      video.srcObject = stream;
-      await video.play();
+        if (modes.includes('single-shot')) {
+          await track.applyConstraints({ advanced: [{ focusMode: 'single-shot' }] });
+          focusLabel = 'Фокус: одноразовий';
+          text('distance', 'Фокус зафіксовано після запуску · 8–12 см');
+          return;
+        }
 
-      const supported = BarcodeDetector.getSupportedFormats
-        ? await BarcodeDetector.getSupportedFormats()
-        : ['ean_13'];
-      const preferred = ['ean_13', 'ean_8', 'upc_a', 'upc_e', 'code_128'];
-      const formats = preferred.filter(format => supported.includes(format));
-      detector = new BarcodeDetector({ formats: formats.length ? formats : undefined });
+        if (modes.includes('none')) {
+          await track.applyConstraints({ advanced: [{ focusMode: 'none' }] });
+          focusLabel = 'Фокус: без авто';
+          return;
+        }
 
-      configureTorchButton();
-      nativeDetectionLoop();
+        focusLabel = 'Фокус: системний';
+        text('distance', 'Ручний фокус не підтримується · тримай 8–12 см');
+      } catch (error) {
+        focusLabel = 'Фокус: системний';
+        text('distance', 'Телефон не прийняв ручний фокус · тримай 8–12 см');
+      }
     }
 
-    function drawScanRegion() {
+    function drawCrop() {
       const video = document.getElementById('video');
-      const sourceWidth = video.videoWidth || 1280;
-      const sourceHeight = video.videoHeight || 720;
-
-      // Область відповідає рамці: майже вся ширина і приблизно центральна третина.
-      const cropWidth = Math.floor(sourceWidth * 0.88);
-      const cropHeight = Math.floor(sourceHeight * 0.34);
-      const cropX = Math.floor((sourceWidth - cropWidth) / 2);
-      const cropY = Math.floor((sourceHeight - cropHeight) / 2);
-
-      scanContext.drawImage(
-        video,
-        cropX, cropY, cropWidth, cropHeight,
-        0, 0, scanCanvas.width, scanCanvas.height
-      );
-
-      return scanCanvas;
+      const sw = video.videoWidth || 640;
+      const sh = video.videoHeight || 480;
+      const cw = Math.floor(sw * 0.90);
+      const ch = Math.floor(sh * 0.30);
+      const sx = Math.floor((sw - cw) / 2);
+      const sy = Math.floor((sh - ch) / 2);
+      ctx.drawImage(video, sx, sy, cw, ch, 0, 0, canvas.width, canvas.height);
+      return canvas;
     }
 
-    async function nativeDetectionLoop() {
+    async function detectionLoop() {
       if (!detector || !stream) return;
 
-      if (!paused && !detectorRunning) {
-        detectorRunning = true;
+      if (!paused && !detectorBusy) {
+        detectorBusy = true;
         try {
-          const results = await detector.detect(drawScanRegion());
-          if (results && results.length) {
+          const results = await detector.detect(drawCrop());
+          if (results?.length) {
             lastCodeSeenAt = Date.now();
             const code = normalizeBarcode(results[0].rawValue);
             if (code && code !== blockedCode) queueCode(code);
-          } else if (blockedCode && Date.now() - lastCodeSeenAt > 750) {
+          } else if (blockedCode && Date.now() - lastCodeSeenAt > UNBLOCK_AFTER_MS) {
             blockedCode = '';
           }
-        } catch (error) {
-          // Пропущений кадр не зупиняє сканер.
+        } catch (_) {
+          // Один невдалий кадр ігноруємо.
         } finally {
-          detectorRunning = false;
+          detectorBusy = false;
         }
       }
 
-      detectorTimer = setTimeout(nativeDetectionLoop, 170);
+      detectorTimer = setTimeout(detectionLoop, DETECT_INTERVAL_MS);
     }
 
-    async function startZxingDetector() {
-      zxingReader = new ZXingBrowser.BrowserMultiFormatReader();
+    async function startZxingFallback() {
+      setStatus('warn', 'Завантажуємо резервний декодер', 'На цьому телефоні немає системного BarcodeDetector');
+      await loadScript('https://unpkg.com/@zxing/browser@0.1.5/umd/index.min.js');
+      if (!window.ZXingBrowser) throw new Error('Не завантажився декодер');
+
+      const reader = new ZXingBrowser.BrowserMultiFormatReader(undefined, {
+        delayBetweenScanAttempts: 250,
+        delayBetweenScanSuccess: 500
+      });
       const video = document.getElementById('video');
-
-      zxingControls = await zxingReader.decodeFromConstraints(
-        { audio: false, video: { facingMode: { ideal: 'environment' }, width: { ideal: 960, max: 1280 }, height: { ideal: 540, max: 720 }, frameRate: { ideal: 20, max: 24 } } },
-        video,
-        (result, error, controls) => {
-          if (controls) zxingControls = controls;
-          if (paused) return;
-
-          if (result) {
-            lastCodeSeenAt = Date.now();
-            const code = normalizeBarcode(result.getText ? result.getText() : String(result));
-            if (code && code !== blockedCode) queueCode(code);
-          } else if (blockedCode && Date.now() - lastCodeSeenAt > 850) {
-            blockedCode = '';
-          }
-        }
-      );
-
-      stream = video.srcObject;
-      configureTorchButton();
+      const controls = await reader.decodeFromVideoElement(video, (result) => {
+        if (paused || !result) return;
+        const code = normalizeBarcode(result.getText ? result.getText() : String(result));
+        if (code && code !== blockedCode) queueCode(code);
+      });
+      window.__zxingControls = controls;
+      setStatus('ok', 'Готово до сканування', focusLabel + '. Резервний декодер');
     }
 
-    function loadPendingQueue() {
+    function loadScript(src) {
+      return new Promise((resolve, reject) => {
+        const script = document.createElement('script');
+        script.src = src;
+        script.async = true;
+        script.onload = resolve;
+        script.onerror = () => reject(new Error('Не вдалося завантажити бібліотеку'));
+        document.head.appendChild(script);
+      });
+    }
+
+    function loadQueue() {
       try {
-        const parsed = JSON.parse(localStorage.getItem(queueStorageKey) || '[]');
-        return Array.isArray(parsed) ? parsed : [];
-      } catch (error) {
+        const value = JSON.parse(localStorage.getItem(queueStorageKey) || '[]');
+        return Array.isArray(value) ? value : [];
+      } catch (_) {
         return [];
       }
     }
 
-    function savePendingQueue() {
-      try {
-        localStorage.setItem(queueStorageKey, JSON.stringify(scanQueue));
-      } catch (error) {
-        // Збереження черги є страховкою, а не умовою роботи.
-      }
-    }
-
-    function updateConnectionPill() {
-      const pill = document.getElementById('connectionPill');
-      if (apiBusy || scanQueue.length) {
-        pill.textContent = 'Черга: ' + scanQueue.length;
-      } else {
-        pill.textContent = 'Онлайн';
-      }
+    function saveQueue() {
+      try { localStorage.setItem(queueStorageKey, JSON.stringify(scanQueue)); } catch (_) {}
     }
 
     function queueCode(code) {
       if (!code || paused) return;
-
       blockedCode = code;
       lastCodeSeenAt = Date.now();
 
-      scanQueue.push({
-        id: Date.now() + '-' + Math.random().toString(16).slice(2),
-        code: code,
-        createdAt: Date.now(),
-        attempts: 0
-      });
-      savePendingQueue();
-      updateConnectionPill();
-
-      // Миттєвий відгук: камера одразу готова до наступного товару.
-      showResult('', 'Код прийнято', code, 'Зберігаємо у фоновому режимі', 'У черзі: ' + scanQueue.length);
-      signalQueued();
-      setFooter('Відведи код із рамки та наведи наступний. Збереження йде у фоні.');
+      scanQueue.push({ code, attempts: 0, createdAt: Date.now() });
+      saveQueue();
+      updatePill();
+      setStatus('ok', 'Код прийнято: ' + code, 'Відведи код із рамки та наведи наступний');
+      if (navigator.vibrate) navigator.vibrate(35);
       processQueue();
     }
 
     async function processQueue() {
       if (apiBusy || !scanQueue.length) {
-        updateConnectionPill();
+        updatePill();
         return;
       }
 
       clearTimeout(retryTimer);
-      retryTimer = null;
       apiBusy = true;
-      updateConnectionPill();
+      updatePill();
       const item = scanQueue[0];
       item.attempts = Number(item.attempts || 0) + 1;
-      savePendingQueue();
-      let saved = false;
+      saveQueue();
 
       try {
         const result = await jsonpRequest('scan', { barcode: item.code });
-        updateStats(result.dashboard);
-
         if (result.status === 'found') {
-          showResult('found', 'Товар знайдено', result.name || 'Без назви', 'Штрих-код: ' + item.code, 'Фактично: ' + Number(result.actualQty || 0));
+          setStatus('ok', result.name || 'Товар знайдено', item.code + ' · фактично: ' + Number(result.actualQty || 0));
         } else {
-          showResult('unknown', 'Невідомий код', item.code, 'Код записано до списку нерозпізнаних', 'Кількість: ' + Number(result.unknownQty || 0));
-          signalUnknown();
+          setStatus('warn', 'Невідомий код: ' + item.code, 'Записано до нерозпізнаних · кількість: ' + Number(result.unknownQty || 0));
         }
-
         scanQueue.shift();
-        savePendingQueue();
-        saved = true;
-        setFooter(scanQueue.length
-          ? 'Збережено. У черзі ще: ' + scanQueue.length
-          : 'Усе збережено. Наведи наступний штрих-код.');
+        saveQueue();
       } catch (error) {
-        showResult('error', 'Немає зв’язку', 'Код лишився у черзі та буде повторений', 'Код: ' + item.code, 'Спроба: ' + item.attempts);
-        if (item.attempts === 1) signalError();
+        setStatus('err', 'Немає зв’язку', item.code + ' лишився в черзі · спроба ' + item.attempts);
       } finally {
         apiBusy = false;
-        updateConnectionPill();
+        updatePill();
       }
 
-      if (saved && scanQueue.length) {
-        setTimeout(processQueue, 80);
-      } else if (!saved && scanQueue.length) {
-        retryTimer = setTimeout(() => {
-          retryTimer = null;
-          processQueue();
-        }, Math.min(6000, 1200 * item.attempts));
+      if (scanQueue.length) {
+        retryTimer = setTimeout(processQueue, 120);
       }
-    }
-
-    function signalQueued() {
-      if (navigator.vibrate) navigator.vibrate(45);
-      beep(980, 0.045);
-    }
-
-    function signalSuccess() {
-      if (navigator.vibrate) navigator.vibrate(90);
-      beep(880, 0.08);
-    }
-
-    function signalUnknown() {
-      if (navigator.vibrate) navigator.vibrate([90, 60, 90]);
-      beep(520, 0.13);
-    }
-
-    function signalError() {
-      if (navigator.vibrate) navigator.vibrate([160, 80, 160]);
-      beep(260, 0.18);
-    }
-
-    function beep(frequency, duration) {
-      try {
-        audioContext = audioContext || new (window.AudioContext || window.webkitAudioContext)();
-        const oscillator = audioContext.createOscillator();
-        const gain = audioContext.createGain();
-        oscillator.frequency.value = frequency;
-        gain.gain.value = 0.08;
-        oscillator.connect(gain);
-        gain.connect(audioContext.destination);
-        oscillator.start();
-        oscillator.stop(audioContext.currentTime + duration);
-      } catch (error) {
-        // Звук необов'язковий.
-      }
-    }
-
-    function configureTorchButton() {
-      const track = getVideoTrack();
-      const capabilities = track && track.getCapabilities ? track.getCapabilities() : {};
-      document.getElementById('torchBtn').disabled = !capabilities.torch;
     }
 
     function getVideoTrack() {
-      const current = stream || document.getElementById('video').srcObject;
-      return current && current.getVideoTracks ? current.getVideoTracks()[0] : null;
+      const active = stream || document.getElementById('video').srcObject;
+      return active?.getVideoTracks ? active.getVideoTracks()[0] : null;
+    }
+
+    function configureTorch() {
+      const track = getVideoTrack();
+      const caps = track?.getCapabilities ? track.getCapabilities() : {};
+      document.getElementById('torchBtn').disabled = !caps.torch;
     }
 
     async function toggleTorch() {
       const track = getVideoTrack();
       if (!track) return;
-
       try {
         torchOn = !torchOn;
         await track.applyConstraints({ advanced: [{ torch: torchOn }] });
-        document.getElementById('torchBtn').textContent = torchOn ? '🔦 Вимкнути' : '🔦 Ліхтарик';
-      } catch (error) {
+        text('torchBtn', torchOn ? 'Вимкнути світло' : 'Ліхтарик');
+      } catch (_) {
         torchOn = false;
-        document.getElementById('torchBtn').textContent = '🔦 Недоступно';
+        text('torchBtn', 'Недоступно');
         document.getElementById('torchBtn').disabled = true;
       }
     }
 
     function togglePause() {
       paused = !paused;
-      document.getElementById('pauseBtn').textContent = paused ? '▶ Продовжити' : '⏸ Пауза';
-      document.getElementById('cameraHint').textContent = paused
-        ? 'Сканування призупинено'
-        : 'Наведи штрих-код у рамку та затримай на мить';
+      text('pauseBtn', paused ? 'Продовжити' : 'Пауза');
       if (!paused) blockedCode = '';
+      setStatus('', paused ? 'Сканування призупинено' : 'Сканування продовжено', focusLabel);
     }
 
     function manualKeydown(event) {
@@ -751,10 +579,6 @@
     }
 
     function closeScanner() {
-      if (scanQueue.length) {
-        const proceed = confirm('У черзі ще ' + scanQueue.length + ' код(ів). Вони збережені на телефоні й продовжать відправлення після повторного відкриття. Закрити сканер?');
-        if (!proceed) return;
-      }
       stopCamera();
       if (window.opener) window.close();
       if (returnUrl) location.href = returnUrl;
@@ -765,22 +589,13 @@
       clearTimeout(retryTimer);
       detectorTimer = null;
       detector = null;
-
-      if (zxingControls && zxingControls.stop) {
-        try { zxingControls.stop(); } catch (error) {}
-      }
-      zxingControls = null;
-
-      const activeStream = stream || document.getElementById('video').srcObject;
-      if (activeStream && activeStream.getTracks) {
-        activeStream.getTracks().forEach(track => track.stop());
-      }
+      try { window.__zxingControls?.stop?.(); } catch (_) {}
+      const active = stream || document.getElementById('video').srcObject;
+      active?.getTracks?.().forEach(track => track.stop());
       stream = null;
     }
 
     window.addEventListener('beforeunload', stopCamera);
-
-    loadSession();
     startCamera();
     processQueue();
   </script>
