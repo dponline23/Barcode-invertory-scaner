@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#050807">
-  <title>Сканер інвентаризації v4.2 LITE</title>
+  <title>Сканер інвентаризації v4.4</title>
   <style>
     * { box-sizing: border-box; }
     html, body {
@@ -153,7 +153,7 @@
 
     .manual {
       display: grid;
-      grid-template-columns: minmax(0, 1fr) auto;
+      grid-template-columns: minmax(0, 1fr) 82px 82px;
       gap: 6px;
       padding: 0 8px 8px;
       background: #0c110f;
@@ -171,9 +171,17 @@
     @media (max-width: 430px) {
       .app { grid-template-rows: auto minmax(340px, 1fr) auto auto; }
       .camera, video { min-height: 340px; }
-      .controls { grid-template-columns: 1fr 1fr; }
+      .top { padding: 11px 12px; }
+      .name { font-size: 18px; }
+      .sub, .pill { font-size: 12px; }
+      .status { min-height: 72px; padding: 11px 12px; }
+      .statusTitle { font-size: 15px; }
+      .statusMeta { font-size: 12px; }
+      .controls { grid-template-columns: 1fr 1fr; gap: 8px; padding: 10px; }
       .controls .close { grid-column: 1 / -1; }
-      .manual { grid-template-columns: 1fr; }
+      button { min-height: 48px; font-size: 15px; }
+      .manual { grid-template-columns: 1fr 1fr; gap: 8px; padding: 0 10px 10px; }
+      .manual input { grid-column: 1 / -1; min-height: 50px; font-size: 17px; }
     }
   </style>
 </head>
@@ -207,7 +215,8 @@
       </div>
       <div class="manual">
         <input id="manualBarcode" inputmode="numeric" placeholder="Штрих-код вручну" onkeydown="manualKeydown(event)">
-        <button class="green" onclick="submitManual()">+1</button>
+        <button class="green" onclick="submitManual(1)">+</button>
+        <button class="red" onclick="submitManual(-1)">−</button>
       </div>
     </section>
   </main>
@@ -237,6 +246,7 @@
     let retryTimer = null;
     let torchOn = false;
     let focusLabel = 'Фокус: авто';
+    let audioContext = null;
 
     const canvas = document.createElement('canvas');
     canvas.width = 480;
@@ -261,6 +271,38 @@
     function updatePill() {
       text('pill', apiBusy || scanQueue.length ? 'Черга: ' + scanQueue.length : focusLabel);
     }
+
+    function ensureAudio() {
+      try {
+        const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+        if (!AudioContextClass) return null;
+        if (!audioContext) audioContext = new AudioContextClass();
+        if (audioContext.state === 'suspended') audioContext.resume().catch(() => {});
+        return audioContext;
+      } catch (_) {
+        return null;
+      }
+    }
+
+    function playScanSound(delta, isError) {
+      const context = ensureAudio();
+      if (!context) return;
+      try {
+        const oscillator = context.createOscillator();
+        const gain = context.createGain();
+        oscillator.type = 'sine';
+        oscillator.frequency.value = isError ? 260 : (Number(delta) < 0 ? 520 : 920);
+        gain.gain.setValueAtTime(0.0001, context.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.12, context.currentTime + 0.01);
+        gain.gain.exponentialRampToValueAtTime(0.0001, context.currentTime + 0.11);
+        oscillator.connect(gain);
+        gain.connect(context.destination);
+        oscillator.start();
+        oscillator.stop(context.currentTime + 0.12);
+      } catch (_) {}
+    }
+
+    document.addEventListener('pointerdown', ensureAudio, { once: true });
 
     function normalizeBarcode(value) {
       return String(value || '').trim().replace(/\s+/g, '');
@@ -295,7 +337,9 @@
 
         window[callbackName] = payload => {
           if (!payload || payload.ok !== true) {
-            cleanup(new Error(payload && payload.error ? payload.error : 'Помилка сервера'));
+            const error = new Error(payload && payload.error ? payload.error : 'Помилка сервера');
+            error.serverError = true;
+            cleanup(error);
             return;
           }
           cleanup(null, payload.result);
@@ -476,7 +520,7 @@
     function loadQueue() {
       try {
         const value = JSON.parse(localStorage.getItem(queueStorageKey) || '[]');
-        return Array.isArray(value) ? value : [];
+        return Array.isArray(value) ? value.map(item => ({ ...item, delta: Number(item.delta) === -1 ? -1 : 1 })) : [];
       } catch (_) {
         return [];
       }
@@ -486,16 +530,18 @@
       try { localStorage.setItem(queueStorageKey, JSON.stringify(scanQueue)); } catch (_) {}
     }
 
-    function queueCode(code) {
+    function queueCode(code, delta) {
       if (!code || paused) return;
+      delta = Number(delta) === -1 ? -1 : 1;
       blockedCode = code;
       lastCodeSeenAt = Date.now();
 
-      scanQueue.push({ code, attempts: 0, createdAt: Date.now() });
+      scanQueue.push({ code, delta, attempts: 0, createdAt: Date.now() });
       saveQueue();
       updatePill();
-      setStatus('ok', 'Код прийнято: ' + code, 'Відведи код із рамки та наведи наступний');
-      if (navigator.vibrate) navigator.vibrate(35);
+      setStatus('ok', (delta > 0 ? '+1 · ' : '−1 · ') + code, 'Дію прийнято. Можна сканувати далі');
+      playScanSound(delta, false);
+      if (navigator.vibrate) navigator.vibrate(delta > 0 ? 35 : [30, 45, 30]);
       processQueue();
     }
 
@@ -513,16 +559,24 @@
       saveQueue();
 
       try {
-        const result = await jsonpRequest('scan', { barcode: item.code });
+        const result = await jsonpRequest('scan', { barcode: item.code, delta: item.delta || 1 });
         if (result.status === 'found') {
-          setStatus('ok', result.name || 'Товар знайдено', item.code + ' · фактично: ' + Number(result.actualQty || 0));
+          setStatus('ok', (item.delta < 0 ? '−1 · ' : '+1 · ') + (result.name || 'Товар знайдено'), item.code + ' · фактично: ' + Number(result.actualQty || 0));
         } else {
-          setStatus('warn', 'Невідомий код: ' + item.code, 'Записано до нерозпізнаних · кількість: ' + Number(result.unknownQty || 0));
+          setStatus('warn', (item.delta < 0 ? '−1 · ' : '+1 · ') + 'Невідомий код: ' + item.code, 'Кількість: ' + Number(result.unknownQty || 0));
         }
         scanQueue.shift();
         saveQueue();
       } catch (error) {
-        setStatus('err', 'Немає зв’язку', item.code + ' лишився в черзі · спроба ' + item.attempts);
+        if (error && error.serverError) {
+          setStatus('err', error.message || 'Дію не виконано', item.code);
+          playScanSound(item.delta, true);
+          if (navigator.vibrate) navigator.vibrate([80, 60, 80]);
+          scanQueue.shift();
+          saveQueue();
+        } else {
+          setStatus('err', 'Немає зв’язку', item.code + ' лишився в черзі · спроба ' + item.attempts);
+        }
       } finally {
         apiBusy = false;
         updatePill();
@@ -566,16 +620,16 @@
     }
 
     function manualKeydown(event) {
-      if (event.key === 'Enter') submitManual();
+      if (event.key === 'Enter') submitManual(1);
     }
 
-    function submitManual() {
+    function submitManual(delta) {
       const input = document.getElementById('manualBarcode');
       const code = normalizeBarcode(input.value);
       if (!code) return;
       input.value = '';
       blockedCode = '';
-      queueCode(code);
+      queueCode(code, delta);
     }
 
     function closeScanner() {
